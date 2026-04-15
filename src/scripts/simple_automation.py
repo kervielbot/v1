@@ -17,7 +17,7 @@ from typing import Dict, List, Any
 import pandas as pd
 
 # Import existing trading functions
-from trading_script import (
+from kervielbot.scripts.trading_script import (
     process_portfolio, daily_results, load_latest_portfolio_state,
     set_data_dir, PORTFOLIO_CSV_PATH, TRADE_LOG_CSV_PATH, last_trading_date
 )
@@ -27,6 +27,17 @@ try:
     HAS_OPENAI = True
 except ImportError:
     HAS_OPENAI = False
+
+try:
+    from google.genai import Client
+    HAS_GEMINI = True
+except ImportError:
+    HAS_GEMINI = False
+
+
+MODEL_ID = 'gemini-3.1-flash-lite-preview'
+PROJECT_ID = 'rogue-trader-wednesday'
+LOCATION = 'global'
 
 
 def generate_trading_prompt(portfolio_df: pd.DataFrame, cash: float, total_equity: float) -> str:
@@ -78,6 +89,25 @@ Respond with ONLY a JSON object in this exact format:
 Only recommend trades you are confident about. If no trades are recommended, use an empty trades array."""
     
     return prompt
+
+
+def call_gemini_api(prompt: str, project_id: str = PROJECT_ID, model: str = MODEL_ID) -> str:
+    """Call Gemini API and return response"""
+    if not HAS_GEMINI:
+        raise ImportError("google-genai package not installed. Run: pip install google-genai")
+
+    client = Client(vertexai=True, project=project_id, location=LOCATION)
+
+    contents = "You are a professional portfolio analyst. Always respond with valid JSON in the exact format requested.\n\n"
+    contents += prompt
+
+    try:
+        response = client.models.generate_content(
+            model=model, contents=contents,
+        )
+        return response.text
+    except Exception as e:
+        return f'{{"error": "API call failed: {e}"}}'
 
 
 def call_openai_api(prompt: str, api_key: str, model: str = "gpt-4") -> str:
@@ -165,7 +195,7 @@ def execute_automated_trades(trades: List[Dict[str, Any]], portfolio_df: pd.Data
     return portfolio_df, cash
 
 
-def run_automated_trading(api_key: str, model: str = "gpt-4", data_dir: str = "Start Your Own", dry_run: bool = False):
+def run_automated_trading(key: str = PROJECT_ID, model: str = MODEL_ID, data_dir: str = "data/", dry_run: bool = False):
     """Run the automated trading process"""
     
     print("=== Automated Trading System ===")
@@ -175,7 +205,7 @@ def run_automated_trading(api_key: str, model: str = "gpt-4", data_dir: str = "S
     set_data_dir(data_path)
     
     # Load current portfolio
-    portfolio_file = data_path / "chatgpt_portfolio_update.csv"
+    portfolio_file = data_path / "portfolio_update.csv"
     if portfolio_file.exists():
         portfolio_df, cash = load_latest_portfolio_state(str(portfolio_file))
     else:
@@ -194,7 +224,8 @@ def run_automated_trading(api_key: str, model: str = "gpt-4", data_dir: str = "S
     
     # Call LLM
     print("Calling LLM for trading recommendations...")
-    response = call_openai_api(prompt, api_key, model)
+    # response = call_openai_api(prompt, key, model)
+    response = call_gemini_api(prompt=prompt, model=model, project_id=key)
     print(f"Received response ({len(response)} characters)")
     
     # Parse response
@@ -215,6 +246,7 @@ def run_automated_trading(api_key: str, model: str = "gpt-4", data_dir: str = "S
     print(f"Recommended trades: {len(trades)}")
     
     # Execute trades
+    portfolio_df = None
     if trades and not dry_run:
         portfolio_df, cash = execute_automated_trades(trades, portfolio_df, cash)
     elif trades and dry_run:
@@ -223,7 +255,12 @@ def run_automated_trading(api_key: str, model: str = "gpt-4", data_dir: str = "S
             print(f"  {trade.get('action', 'unknown').upper()}: {trade.get('shares', 0)} shares of {trade.get('ticker', 'unknown')} at ${trade.get('price', 0):.2f}")
     else:
         print("No trades recommended")
-    
+
+    # Save the portfolio state after executing trades (or simulating)
+    if portfolio_df is not None:
+        portfolio_df.to_csv(portfolio_file, index=False)
+        print(f"Updated portfolio saved to: {portfolio_file}")
+
     # Save the LLM response for review
     response_file = data_path / "llm_responses.jsonl"
     with open(response_file, "a") as f:
@@ -240,22 +277,21 @@ def run_automated_trading(api_key: str, model: str = "gpt-4", data_dir: str = "S
 def main():
     """Main function"""
     parser = argparse.ArgumentParser(description="Simple Automated Trading")
-    parser.add_argument("--api-key", help="OpenAI API key (or set OPENAI_API_KEY env var)")
-    parser.add_argument("--model", default="gpt-4", help="OpenAI model to use")
-    parser.add_argument("--data-dir", default="Start Your Own", help="Data directory")
+    parser.add_argument("--key", default=PROJECT_ID, help="project key")
+    parser.add_argument("--model", default=MODEL_ID, help="LLM model to use")
+    parser.add_argument("--data-dir", default="data/", help="Data directory")
     parser.add_argument("--dry-run", action="store_true", help="Don't execute trades, just show recommendations")
     
     args = parser.parse_args()
     
-    # Get API key
-    api_key = args.api_key or os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        print("Error: OpenAI API key required. Set OPENAI_API_KEY env var or use --api-key")
+    # Get key
+    if not key:
+        print("Error: Project/API key required. Use --key")
         return
     
     # Run automated trading
     run_automated_trading(
-        api_key=api_key,
+        key=args.key,
         model=args.model,
         data_dir=args.data_dir,
         dry_run=args.dry_run
