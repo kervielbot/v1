@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kervielbot"
+version = "0.1.0"
+dependencies = [
+    "yfinance>=0.2.0",
+    "pandas>=2.0.0",
+    "google-genai>=0.1.0",
+    "plotly>=5.0.0",
+]
+
+[tool.setuptools]
+package-dir = {"kervielbot" = "src"}
