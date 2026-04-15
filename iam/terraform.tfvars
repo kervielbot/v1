@@ -14,6 +14,7 @@ emails = [
   "constantinos.drakopoulos@ing.com",
   "Wouter.Fidder@ing.com",
   "jan.janiszewski@ing.com",
-  "Vlad.Cozma@ing.com",
-  "vincent.groenestege@ing.com"
+  "annabell.gesang@ing.com",
+  "vincent.groenestege@ing.com",
+  "ilan.fridman.rojas@ing.com",
 ]
