@@ -1,19 +1,13 @@
 locals {
-  bindings = flatten([
-    for role in var.roles : [
-      for email in var.emails : {
-        role      = role
-        email     = email
-        principal = "principal://iam.googleapis.com/locations/global/workforcePools/sandbox-p/subject/${email}"
-      }
-    ]
-  ])
+  principals = [
+    for email in var.emails : "principal://iam.googleapis.com/locations/global/workforcePools/sandbox-p/subject/${email}"
+  ]
 }
 
-resource "google_project_iam_member" "bindings" {
-  for_each = { for b in local.bindings : "${b.role}-${b.email}" => b }
+resource "google_project_iam_binding" "bindings" {
+  for_each = toset(var.roles)
 
   project = var.project_id
-  role    = each.value.role
-  member  = each.value.principal
+  role    = each.value
+  members = local.principals
 }
