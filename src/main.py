@@ -1,6 +1,7 @@
 import pandas as pd
 from kervielbot.agents import DataAgent, AnalysisAgent, TraderAgent, client
 from kervielbot.stocks import STOCK_NAMES
+from kervielbot.prompts import ANALYST_PROMPT, TRADER_PROMPT
 
 
 HISTORICAL_DATA_START = "2025-08-31"
@@ -51,8 +52,8 @@ def get_actual_dates(data_df, hist_start, test_start, test_end):
 def main():
     # Create instances of the agents with specific roles.
     data_agent = DataAgent("DataAgent", "You fetch and provide historical stock data.", client)
-    analysis_agent = AnalysisAgent("AnalysisAgent", "You analyze financial data and provide neutral insights.", client)
-    trader_agent = TraderAgent("TraderAgent", "You provide portfolio weight recommendations.", client)
+    analysis_agent = AnalysisAgent("AnalysisAgent", ANALYST_PROMPT, client)
+    trader_agent = TraderAgent("TraderAgent", TRADER_PROMPT, client)
 
     # Step 1: Data Agent fetches historical data for a chosen stock.
     # ticker = "AAPL"
