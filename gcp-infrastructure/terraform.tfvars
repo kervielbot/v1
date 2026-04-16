@@ -1,4 +1,4 @@
-project_id = "rogue-trader-wednesday" # Update this when the 1-day sandbox expires
+project_id = "rogue-trader-thursday" # Update this when the 1-day sandbox expires
 
 roles = [
   "roles/owner",
