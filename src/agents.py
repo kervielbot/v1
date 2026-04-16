@@ -1,5 +1,5 @@
 import yfinance as yf
-from google.genai import Client, types
+from google.genai import Client
 from tqdm import tqdm
 import json
 import pandas as pd
@@ -13,39 +13,6 @@ PROJECT_ID = 'rogue-trader-thursday'
 LOCATION = 'global'
 
 client = Client(vertexai=True, project=PROJECT_ID, location=LOCATION)
-
-# Calculator tool for portfolio weight validation
-def sum_weights(weights: dict) -> float:
-    """Calculate the sum of portfolio weights to verify they total 1.0.
-    
-    Args:
-        weights: Dictionary mapping asset names to their weight values
-        
-    Returns:
-        The sum of all weight values
-    """
-    return sum(weights.values())
-
-# Tool declaration for Gemini function calling
-SUM_WEIGHTS_TOOL = types.Tool(
-    function_declarations=[{
-        "name": "sum_weights",
-        "description": "Calculate the sum of portfolio weights to verify they total 1.0. Use this to validate that your weight allocation is correct.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "weights": {
-                    "type": "object",
-                    "description": "Dictionary mapping asset names (like 'Cash', 'AAPL', 'GOOGL') to their weight values (floats between 0 and 1)",
-                    "additionalProperties": {
-                        "type": "number"
-                    }
-                }
-            },
-            "required": ["weights"]
-        }
-    }]
-)
 
 # Define a base agent class that uses the OpenAI API if an API key is set; otherwise, it returns a simulated response.
 class BaseAgent:
@@ -123,6 +90,9 @@ class TraderAgent(BaseAgent):
     def allocation(self, portfolio, latest_date, analysis, list_of_stocks):
         """Generate allocation weights and update portfolio dataframe.
         
+        Validates that weights sum to within ±5% of 1.0. If not, retries up to 3 times
+        with feedback about the previous sum.
+        
         Args:
             portfolio: DataFrame with datetime index and columns for each asset
             latest_date: Datetime for the new allocation row
@@ -132,104 +102,72 @@ class TraderAgent(BaseAgent):
         Returns:
             Updated portfolio DataFrame with new allocation row appended
         """
-        prompt = f"""You are given the following portfolio analysis: {analysis}. 
-        Based on this analysis, suggest the ideal weights for the portfolio comprised of the following assets: 
-        free cash and the following stocks {list_of_stocks}. 
+        base_prompt = f"""You are given the following portfolio analysis: {analysis}.
+        Based on this analysis, suggest the ideal weights for the portfolio comprised of the following assets:
+        free cash and the following stocks {list_of_stocks}.
         
-        IMPORTANT: Use the sum_weights tool to verify that your weights sum to 1.0 before finalizing your answer.
-        
-        After verifying with the tool, return ONLY a valid JSON object in the following format (no other text):
+        Return ONLY a valid JSON object in this exact format (no other text):
         {{"Cash": 0.2, "AAPL": 0.3, "GOOGL": 0.5}}
         
-        Use ticker names for stocks and 'Cash' for free cash. Weights should be floats between 0 and 1 and must sum to exactly 1.0."""
+        Use ticker names for stocks and 'Cash' for free cash. Weights must be floats between 0 and 1 and sum to 1.0."""
         
-        # Generate content with function calling enabled
-        config = types.GenerateContentConfig(tools=[SUM_WEIGHTS_TOOL])
-        response = client.models.generate_content(
-            model=MODEL_ID, 
-            contents=prompt,
-            config=config
-        )
+        max_retries = 3
+        best_weights = None
+        last_total = None
         
-        # Handle function calls in a loop
-        max_iterations = 5
-        iteration = 0
-        conversation = [types.Content(role="user", parts=[types.Part(text=prompt)])]
-        final_response = None
-        
-        while iteration < max_iterations:
-            # Check if the response contains a function call
-            if (response.candidates and 
-                response.candidates[0].content.parts and 
-                hasattr(response.candidates[0].content.parts[0], 'function_call') and
-                response.candidates[0].content.parts[0].function_call):
-                
-                function_call = response.candidates[0].content.parts[0].function_call
-                print(f"[{self.name}] Function call detected: {function_call.name}")
-                print(f"[{self.name}] Arguments: {dict(function_call.args)}")
-                
-                # Execute the sum_weights function
-                if function_call.name == "sum_weights":
-                    weights = dict(function_call.args.get("weights", {}))
-                    result = sum_weights(weights)
-                    print(f"[{self.name}] sum_weights result: {result}")
-                    
-                    # Add model's response to conversation
-                    conversation.append(response.candidates[0].content)
-                    
-                    # Create function response and add to conversation
-                    function_response = types.Part.from_function_response(
-                        name=function_call.name,
-                        response={"sum": result}
-                    )
-                    conversation.append(types.Content(role="user", parts=[function_response]))
-                    
-                    # Continue the conversation
-                    response = client.models.generate_content(
-                        model=MODEL_ID,
-                        contents=conversation,
-                        config=config
-                    )
-                    
-                    iteration += 1
-                else:
-                    print(f"[{self.name}] Unknown function call: {function_call.name}")
-                    break
+        for attempt in range(max_retries + 1):  # 0, 1, 2, 3 = 4 total attempts
+            # Build prompt with feedback if retry
+            if attempt == 0:
+                prompt = base_prompt
             else:
-                # No function call, we have the final response
-                final_response = response.text
-                break
-        
-        # If we exhausted iterations without getting text, try to extract from last response
-        if final_response is None:
-            final_response = response.text if response.text else ""
-            if not final_response:
-                print(f"[{self.name}] Warning: No text response after function calls")
-        
-        # Store response with latest_date
-        self.allocation_history[latest_date] = final_response
-        
-        # Try to parse JSON and validate weights
-        try:
-            start_idx = final_response.find('{')
-            end_idx = final_response.rfind('}') + 1
-            if start_idx == -1 or end_idx <= start_idx:
-                raise ValueError("No JSON object found in response")
+                prompt = f"{base_prompt}\n\nYour previous allocation summed to {last_total:.4f} instead of 1.0. Please return weights that sum to exactly 1.0."
             
-            weights_dict = json.loads(final_response[start_idx:end_idx])
-            new_row = {col: weights_dict.get(col, 0.0) for col in portfolio.columns}
-            
-            # Validate weights sum to 1.0 (fallback validation)
-            total_weight = sum(new_row.values())
-            if not (0.99 <= total_weight <= 1.01):
-                print(f"Weights sum to {total_weight}, not 1.0. Reweighting.")
-                for key in new_row:
-                    new_row[key] = new_row[key] / total_weight if total_weight > 0 else 0.0
-
-        except (json.JSONDecodeError, ValueError) as e:
-            print(f"Error parsing LLM response: {e}")
-            print(f"Response: {final_response}")
+            try:
+                response = client.models.generate_content(model=MODEL_ID, contents=prompt)
+                
+                # Parse JSON
+                start_idx = response.text.find('{')
+                end_idx = response.text.rfind('}') + 1
+                weights_dict = json.loads(response.text[start_idx:end_idx])
+                weights = {col: weights_dict.get(col, 0.0) for col in portfolio.columns}
+                
+                # Calculate total
+                total = sum(weights.values())
+                last_total = total
+                
+                # Track best attempt (closest to 1.0)
+                if best_weights is None or abs(total - 1.0) < abs(sum(best_weights.values()) - 1.0):
+                    best_weights = weights
+                
+                # Check if within bounds (0.95 to 1.05)
+                if 0.95 <= total <= 1.05:
+                    # Within bounds, normalize and return immediately
+                    new_row = {k: v / total for k, v in weights.items()}
+                    new_df_row = pd.DataFrame([new_row], index=[latest_date])
+                    return pd.concat([portfolio, new_df_row])
+                # Otherwise continue loop to retry
+                
+            except:
+                # Parse error, continue to next attempt
+                continue
+        
+        # All retries exhausted, use best attempt or fallback
+        if best_weights is None:
+            # No valid parse, use previous allocation
             new_row = portfolio.iloc[-1].to_dict()
+        else:
+            # Use best attempt even though it's out of bounds
+            new_row = best_weights
+        
+        # If weights sum to zero, fall back to previous allocation
+        total = sum(new_row.values())
+        if total <= 0:
+            new_row = portfolio.iloc[-1].to_dict()
+            total = sum(new_row.values())
+        
+        # Normalize weights to 1.0
+        if total > 0:
+            new_row = {k: v / total for k, v in new_row.items()}
         
         # Append new row with latest_date index
         new_df_row = pd.DataFrame([new_row], index=[latest_date])
