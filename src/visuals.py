@@ -150,8 +150,7 @@ def generate_benchmark_plot(capital, test_start, starting_capital):
         font=dict(size=11),
         xaxis=dict(
             tickformat='%Y-%m-%d',
-            tickangle=-45,
-            dtick='1D'  # Show every day
+            tickangle=-45
         )
     )
     
