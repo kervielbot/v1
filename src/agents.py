@@ -24,6 +24,58 @@ def sum_weights(weights: dict) -> float:
     """
     return sum(weights.values())
 
+def calculate_period_return(data_df, weights_series, start_date, end_date):
+    """Calculate portfolio return for a period.
+    
+    Args:
+        data_df: Full price dataframe with {ticker}:Close columns
+        weights_series: Series with asset allocations (including 'Cash')
+        start_date: Period start date (pandas Timestamp)
+        end_date: Period end date (pandas Timestamp)
+        
+    Returns:
+        Float: Portfolio return for the period (e.g., 0.05 for 5% gain)
+    """
+    portfolio_return = 0.0
+    
+    for asset, weight in weights_series.items():
+        if weight == 0:
+            continue
+            
+        # Cash has 0% return
+        if asset == 'Cash':
+            continue
+        
+        # Get Close price column for this stock
+        close_col = f"{asset}:Close"
+        
+        if close_col not in data_df.columns:
+            print(f"Warning: No price data for {asset}, assuming 0% return")
+            continue
+        
+        # Get prices at start and end
+        try:
+            start_price = data_df.loc[start_date, close_col]
+            end_price = data_df.loc[end_date, close_col]
+            
+            # Ensure we have scalar values (handle potential Series returns)
+            if isinstance(start_price, pd.Series):
+                start_price = start_price.iloc[0] if len(start_price) > 0 else None
+            if isinstance(end_price, pd.Series):
+                end_price = end_price.iloc[0] if len(end_price) > 0 else None
+            
+            # Calculate return for this asset
+            if start_price is not None and end_price is not None and pd.notna(start_price) and pd.notna(end_price) and start_price > 0:
+                asset_return = (end_price - start_price) / start_price
+                portfolio_return += weight * asset_return
+            else:
+                print(f"Warning: Invalid price data for {asset} between {start_date.date()} and {end_date.date()}")
+        except KeyError:
+            print(f"Warning: Missing date data for {asset}")
+            continue
+    
+    return portfolio_return
+
 # Tool declaration for Gemini function calling
 SUM_WEIGHTS_TOOL = types.Tool(
     function_declarations=[{
@@ -190,7 +242,10 @@ class TraderAgent(BaseAgent):
                 raise ValueError("No JSON object found in response")
             
             weights_dict = json.loads(final_response[start_idx:end_idx])
-            new_row = {col: weights_dict.get(col, 0.0) for col in portfolio.columns}
+            
+            # Exclude Portfolio_Value from columns when creating weights
+            weight_columns = [col for col in portfolio.columns if col != 'Portfolio_Value']
+            new_row = {col: weights_dict.get(col, 0.0) for col in weight_columns}
             
             # Validate weights sum to 1.0 (fallback validation)
             total_weight = sum(new_row.values())
@@ -202,7 +257,9 @@ class TraderAgent(BaseAgent):
         except (json.JSONDecodeError, ValueError) as e:
             print(f"Error parsing LLM response: {e}")
             print(f"Response: {final_response}")
-            new_row = portfolio.iloc[-1].to_dict()
+            # Use previous weights, excluding Portfolio_Value
+            prev_row = portfolio.iloc[-1].to_dict()
+            new_row = {k: v for k, v in prev_row.items() if k != 'Portfolio_Value'}
         
         # Append new row with latest_date index
         new_df_row = pd.DataFrame([new_row], index=[latest_date])
