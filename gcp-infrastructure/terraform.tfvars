@@ -4,6 +4,8 @@ roles = [
   "roles/owner",
   "roles/serviceusage.serviceUsageAdmin",
   "roles/aiplatform.user",
+  "roles/notebooks.admin",
+  "roles/iam.serviceAccountUser",
 ]
 
 emails = [
@@ -12,7 +14,7 @@ emails = [
   "daniel.prins@ing.com",
   "tiange.zhao@ing.com",
   "constantinos.drakopoulos@ing.com",
-  "Wouter.Fidder@ing.com",
+  "wouter.fidder@ing.com",
   "jan.janiszewski@ing.com",
   "annabell.gesang@ing.com",
   "vincent.groenestege@ing.com",
