@@ -8,7 +8,7 @@ MODEL_ID = 'gemini-3-flash-preview'
 MODEL_ID = 'gemini-3.1-flash-lite-preview'
 MODEL_ID = 'gemini-2.5-flash-lite'
 
-PROJECT_ID = 'rogue-trader-wednesday'
+PROJECT_ID = 'rogue-trader-thursday'
 
 LOCATION = 'global'
 
