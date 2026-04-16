@@ -1,5 +1,6 @@
 locals {
   services = [
+    "compute.googleapis.com",
     "notebooks.googleapis.com",
     "aiplatform.googleapis.com",
     "compute.googleapis.com",
