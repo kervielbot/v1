@@ -1,6 +1,6 @@
 import pandas as pd
 from kervielbot.agents import DataAgent, AnalysisAgent, TraderAgent, client
-
+from kervielbot.stocks import STOCK_NAMES
 
 
 HISTORICAL_DATA_START = "2025-08-31"
@@ -56,8 +56,8 @@ def main():
 
     # Step 1: Data Agent fetches historical data for a chosen stock.
     ticker = "AAPL"
-    list_of_stocks = [ticker]
-    data_df = data_agent.fetch_data(ticker, period='24mo', interval='1d')
+    list_of_stocks = STOCK_NAMES
+    data_df = data_agent.fetch_data(list_of_stocks, period='24mo', interval='1d')
     
     # Get actual dates from the dataframe
     hist_start, test_start, test_end = get_actual_dates(
@@ -65,7 +65,9 @@ def main():
     )
     
     # Initialize portfolio with 100% cash at the start of test period
-    portfolio_weights = pd.DataFrame({'Cash': [1.0], 'AAPL': [0.0]}, index=[hist_start])
+    init_weights = {t: 0.0 for t in list_of_stocks}
+    init_weights['Cash'] = 1.0
+    portfolio_weights = pd.DataFrame(init_weights, index=[hist_start])
     
     # Get all test dates from test_start to test_end
     test_dates = data_df[test_start:test_end].index
