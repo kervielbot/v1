@@ -102,9 +102,10 @@ class TraderAgent(BaseAgent):
             # Validate weights sum to 1.0
             total_weight = sum(new_row.values())
             if not (0.99 <= total_weight <= 1.01):
-                print(f"Weights sum to {total_weight}, not 1.0. Using previous weights.")
-                new_row = portfolio.iloc[-1].to_dict()
-            
+                print(f"Weights sum to {total_weight}, not 1.0. Reweighting.")
+                for key in new_row:
+                    new_row[key] = new_row[key] / total_weight if total_weight > 0 else 0.0
+
         except (json.JSONDecodeError, ValueError) as e:
             print(f"Error parsing LLM response: {e}")
             print(f"Response: {response}")
