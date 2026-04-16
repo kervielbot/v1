@@ -2,51 +2,13 @@ import pandas as pd
 from kervielbot.agents import DataAgent, AnalysisAgent, TraderAgent, client
 from kervielbot.stocks import STOCK_NAMES
 from kervielbot.prompts import ANALYST_PROMPT, TRADER_PROMPT
-
+from kervielbot.preprocessing import get_trading_dates
 
 HISTORICAL_DATA_START = "2025-08-31"
 TEST_DATE_START = "2025-09-01"
 TEST_DATE_END = "2025-09-05"
-#TEST_DATE_END = "2025-12-31"
 
 
-def get_actual_dates(data_df, hist_start, test_start, test_end):
-    """Get actual dates from dataframe index, using next available date if exact match not found.
-    
-    Args:
-        data_df: DataFrame with datetime index
-        hist_start: Historical data start date string
-        test_start: Test period start date string  
-        test_end: Test period end date string
-        
-    Returns:
-        tuple: (actual_hist_start, actual_test_start, actual_test_end) as Timestamps
-    """
-    def get_next_available(date_str):
-        target = pd.to_datetime(date_str).tz_localize(data_df.index.tz)
-        if target in data_df.index:
-            return target
-        # Find next available date after target
-        future_dates = data_df.index[data_df.index >= target]
-        if len(future_dates) == 0:
-            raise ValueError(f"No dates found on or after {date_str}")
-        return future_dates[0]
-    
-    def get_prev_available(date_str):
-        target = pd.to_datetime(date_str).tz_localize(data_df.index.tz)
-        if target in data_df.index:
-            return target
-        # Find previous available date before target
-        past_dates = data_df.index[data_df.index <= target]
-        if len(past_dates) == 0:
-            raise ValueError(f"No dates found on or before {date_str}")
-        return past_dates[-1]
-    
-    return (
-        get_next_available(hist_start),
-        get_next_available(test_start),
-        get_prev_available(test_end)
-    )
 
 
 def main():
@@ -61,7 +23,7 @@ def main():
     data_df = data_agent.fetch_data(list_of_stocks, period='24mo', interval='1d')
     
     # Get actual dates from the dataframe
-    hist_start, test_start, test_end = get_actual_dates(
+    hist_start, test_start, test_end = get_trading_dates(
         data_df, HISTORICAL_DATA_START, TEST_DATE_START, TEST_DATE_END
     )
     
