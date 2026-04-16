@@ -5,3 +5,5 @@ __pycache__
 portfolio_allocation.csv
 kervielbot.egg-info
 .DS_Store
+.data_cache/
+portfolio_performance.html
