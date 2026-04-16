@@ -55,7 +55,7 @@ def main():
     trader_agent = TraderAgent("TraderAgent", "You provide portfolio weight recommendations.", client)
 
     # Step 1: Data Agent fetches historical data for a chosen stock.
-    ticker = "AAPL"
+    # ticker = "AAPL"
     list_of_stocks = STOCK_NAMES
     data_df = data_agent.fetch_data(list_of_stocks, period='24mo', interval='1d')
     
