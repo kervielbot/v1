@@ -1,5 +1,6 @@
 import yfinance as yf
 from google.genai import Client
+from tqdm import tqdm
 import json
 import pandas as pd
 
@@ -28,10 +29,17 @@ class BaseAgent:
 
 # Data Agent: Fetches financial data using yfinance.
 class DataAgent(BaseAgent):
-    def fetch_data(self, ticker, period='1mo', interval='1d'):
-        print(f"{self.name} is fetching data for {ticker} (Period: {period}, Interval: {interval}).")
-        stock = yf.Ticker(ticker)
-        df = stock.history(period=period, interval=interval)
+    def fetch_data(self, ticker_list, period='1mo', interval='1d'):
+        print(f"{self.name} is fetching data for {len(ticker_list)} stocks (Period: {period}, Interval: {interval}).")
+
+        stocks = []
+        for ticker in tqdm(sorted(ticker_list)):
+            stock = yf.Ticker(ticker)
+            df = stock.history(period=period, interval=interval)
+            df.columns = [ticker + ':' + c for c in df.columns]
+            stocks.append(df)
+
+        df = pd.concat(stocks, axis=1)
         return df
     
 # Analysis Agent: Analyzes the data by computing summary statistics and generating insights.
@@ -77,7 +85,6 @@ class TraderAgent(BaseAgent):
         Use ticker names for stocks and 'Cash' for free cash. Weights should be floats between 0 and 1."""
         
         response = self.act(prompt)
-        print(f"New allocation: {response}")
         
         # Store response with latest_date
         self.allocation_history[latest_date] = response
