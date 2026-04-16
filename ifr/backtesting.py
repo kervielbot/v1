@@ -74,4 +74,3 @@ def backtest(stock_prices_df, portfolio):
 
 # %%
 backtest(test_prices, test_portfolio)
-

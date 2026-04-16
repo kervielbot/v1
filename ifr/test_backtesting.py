@@ -17,6 +17,7 @@ test_portfolio = pd.DataFrame(
     }
 )
 
+
 def test_backtest():
     np.testing.assert_array_equal(
         backtesting.backtest(test_prices, test_portfolio),
