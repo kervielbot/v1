@@ -4,6 +4,7 @@ from kervielbot.stocks import STOCK_NAMES
 from kervielbot.prompts import ANALYST_PROMPT, TRADER_PROMPT
 from kervielbot.preprocessing import get_trading_dates, update_capital
 from kervielbot.visuals import generate_benchmark_plot
+from kervielbot.stats import calculate_returns, calculate_return_correlations, calculate_rolling_volatility
 
 HISTORICAL_DATA_START = "2025-08-31"
 TEST_DATE_START = "2025-09-01"
@@ -22,6 +23,9 @@ def main():
     # ticker = "AAPL"
     list_of_stocks = STOCK_NAMES
     data_df = data_agent.fetch_data(list_of_stocks, period='24mo', interval='1d')
+    
+    # Compute daily returns for all data (no leakage - only uses t and t-1 prices)
+    daily_returns = calculate_returns(data_df)
     
     # Get actual dates from the dataframe
     hist_start, test_start, test_end = get_trading_dates(
@@ -55,6 +59,13 @@ def main():
         # Rolling window: fixed-size window ending just before forecast_date
         end_idx = data_df.index.get_loc(forecast_date)
         historical_data = data_df.iloc[start_idx + i : end_idx]
+        
+        # Truncate daily returns to same historical window
+        historical_returns = daily_returns.iloc[start_idx + i : end_idx]
+        
+        # Compute volatilities and correlation matrix from historical returns
+        volatility_dict = calculate_rolling_volatility(historical_returns)
+        correlation_matrix = calculate_return_correlations(historical_returns)
         
         # Analysis agent analyzes historical data
         analysis = analysis_agent.analyze(historical_data)
