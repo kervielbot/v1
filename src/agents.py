@@ -3,6 +3,8 @@ from google.genai import Client, types
 from tqdm import tqdm
 import json
 import pandas as pd
+import hashlib
+from pathlib import Path
 
 MODEL_ID = 'gemini-3.1-flash-lite-preview'
 
@@ -60,7 +62,27 @@ class BaseAgent:
 
 # Data Agent: Fetches financial data using yfinance.
 class DataAgent(BaseAgent):
+    def __init__(self, name, role, client):
+        super().__init__(name, role, client)
+        self.cache_dir = Path(".data_cache")
+        self.cache_dir.mkdir(exist_ok=True)
+    
+    def _get_cache_filename(self, ticker_list, period, interval):
+        """Generate a deterministic cache filename from parameters."""
+        # Create a hash of the parameters
+        params_str = f"{'_'.join(sorted(ticker_list))}_{period}_{interval}"
+        params_hash = hashlib.md5(params_str.encode()).hexdigest()
+        return self.cache_dir / f"data_{params_hash}.pkl"
+    
     def fetch_data(self, ticker_list, period='1mo', interval='1d'):
+        cache_file = self._get_cache_filename(ticker_list, period, interval)
+        
+        # Check if cache exists
+        if cache_file.exists():
+            print(f"{self.name} is loading cached data for {len(ticker_list)} stocks from {cache_file.name}")
+            df = pd.read_pickle(cache_file)
+            return df
+        
         print(f"{self.name} is fetching data for {len(ticker_list)} stocks (Period: {period}, Interval: {interval}).")
 
         stocks = []
@@ -71,6 +93,11 @@ class DataAgent(BaseAgent):
             stocks.append(df)
 
         df = pd.concat(stocks, axis=1)
+        
+        # Save to cache
+        df.to_pickle(cache_file)
+        print(f"{self.name} cached data to {cache_file.name}")
+        
         return df
     
 # Analysis Agent: Analyzes the data by computing summary statistics and generating insights.
