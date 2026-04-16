@@ -77,7 +77,6 @@ class TraderAgent(BaseAgent):
         Use ticker names for stocks and 'Cash' for free cash. Weights should be floats between 0 and 1."""
         
         response = self.act(prompt)
-        print(f"New allocation: {response}")
         
         # Store response with latest_date
         self.allocation_history[latest_date] = response
