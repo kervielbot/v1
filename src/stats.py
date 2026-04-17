@@ -52,6 +52,29 @@ def calculate_return_correlations(historical_returns):
     return correlation_matrix
 
 
+def calculate_return_covariance(historical_returns):
+    """
+    Calculate annualized covariance matrix of returns over the entire historical period.
+    
+    Called each pass with historical_returns ending before forecast_date.
+    Annualizes the covariance using the ~252 trading days per year convention.
+    
+    Args:
+        historical_returns: DataFrame of daily returns (columns = ticker symbols),
+                            pre-computed and sliced to the historical window
+    
+    Returns:
+        DataFrame: annualized covariance matrix (ticker x ticker) computed over entire period
+    """
+    # Drop NaN rows (first row will be NaN from pct_change)
+    returns_clean = historical_returns.dropna()
+    
+    # Covariance matrix, annualized (multiply by 252)
+    covariance_matrix = returns_clean.cov() * 252
+    
+    return covariance_matrix
+
+
 def calculate_rolling_volatility(historical_returns, windows=None):
     """
     Calculate annualized volatility as of the last day in historical_returns.

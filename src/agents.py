@@ -72,10 +72,52 @@ class DataAgent(BaseAgent):
     
 # Analysis Agent: Analyzes the data by computing summary statistics and generating insights.
 class AnalysisAgent(BaseAgent):
-    def analyze(self, data_df):
+    def analyze(self, data_df, volatility_dict=None, correlation_matrix=None, covariance_matrix=None):
         # Compute summary statistics from the DataFrame.
         summary = data_df.describe().to_string()
-        prompt = f"Analyze the following financial data summary and provide neutral insights:\n{summary}."
+        
+        # Build comprehensive analysis prompt
+        prompt = f"Analyze the following financial data and provide neutral insights:\n\n### Price Data Summary\n{summary}"
+        
+        # Add volatility analysis if provided
+        if volatility_dict:
+            vol_20d = volatility_dict.get('volatility_20d', None)
+            vol_60d = volatility_dict.get('volatility_60d', None)
+            
+            if vol_20d is not None:
+                # Get top and bottom volatility stocks
+                top_vol_20d = vol_20d.nlargest(5)
+                bottom_vol_20d = vol_20d.nsmallest(5)
+                prompt += f"\n\n### Volatility Analysis (20-day annualized)\nHighest volatility:\n{top_vol_20d.to_string()}\n\nLowest volatility:\n{bottom_vol_20d.to_string()}"
+            
+            if vol_60d is not None:
+                top_vol_60d = vol_60d.nlargest(5)
+                bottom_vol_60d = vol_60d.nsmallest(5)
+                prompt += f"\n\n### Volatility Analysis (60-day annualized)\nHighest volatility:\n{top_vol_60d.to_string()}\n\nLowest volatility:\n{bottom_vol_60d.to_string()}"
+        
+        # Add correlation analysis if provided
+        if correlation_matrix is not None:
+            # Show strong correlations (> 0.7 or < -0.7)
+            strong_corr = []
+            for i in range(len(correlation_matrix.columns)):
+                for j in range(i+1, len(correlation_matrix.columns)):
+                    corr_val = correlation_matrix.iloc[i, j]
+                    if abs(corr_val) > 0.7:
+                        strong_corr.append((correlation_matrix.columns[i], correlation_matrix.columns[j], corr_val))
+            
+            if strong_corr:
+                strong_corr.sort(key=lambda x: abs(x[2]), reverse=True)
+                corr_text = "\n".join([f"{x[0]} <-> {x[1]}: {x[2]:.3f}" for x in strong_corr[:10]])
+                prompt += f"\n\n### Strong Correlations (|corr| > 0.7)\n{corr_text}"
+        
+        # Add covariance analysis if provided
+        if covariance_matrix is not None:
+            # Calculate mean covariance of each stock with others (portfolio covariance measure)
+            mean_cov = covariance_matrix.mean(axis=0).sort_values(ascending=False)
+            high_cov = mean_cov.head(5)
+            low_cov = mean_cov.tail(5)
+            prompt += f"\n\n### Covariance Analysis (annualized)\nHighest average covariance with portfolio:\n{high_cov.to_string()}\n\nLowest average covariance with portfolio:\n{low_cov.to_string()}"
+        
         return self.act(prompt)
     
 
@@ -125,7 +167,10 @@ class TraderAgent(BaseAgent):
             if attempt == 0:
                 prompt = base_prompt
             else:
-                prompt = f"{base_prompt}\n\nYour previous allocation summed to {last_total:.4f} instead of 1.0. Please return weights that sum to exactly 1.0."
+                if last_total is not None:
+                    prompt = f"{base_prompt}\n\nYour previous allocation summed to {last_total:.4f} instead of 1.0. Please return weights that sum to exactly 1.0."
+                else:
+                    prompt = f"{base_prompt}\n\nYour previous response could not be parsed. Please ensure you return a valid JSON object with ticker symbols as keys and weights as floats."
             
             try:
                 response = client.models.generate_content(model=MODEL_ID, contents=prompt)
