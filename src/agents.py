@@ -72,51 +72,48 @@ class DataAgent(BaseAgent):
     
 # Analysis Agent: Analyzes the data by computing summary statistics and generating insights.
 class AnalysisAgent(BaseAgent):
-    def analyze(self, data_df, volatility_dict=None, correlation_matrix=None, covariance_matrix=None):
+    def analyze(self, data_df, volatility_dict, correlation_matrix, covariance_matrix):
         # Compute summary statistics from the DataFrame.
         summary = data_df.describe().to_string()
         
         # Build comprehensive analysis prompt
         prompt = f"Analyze the following financial data and provide neutral insights:\n\n### Price Data Summary\n{summary}"
         
-        # Add volatility analysis if provided
-        if volatility_dict:
-            vol_20d = volatility_dict.get('volatility_20d', None)
-            vol_60d = volatility_dict.get('volatility_60d', None)
-            
-            if vol_20d is not None:
-                # Get top and bottom volatility stocks
-                top_vol_20d = vol_20d.nlargest(5)
-                bottom_vol_20d = vol_20d.nsmallest(5)
-                prompt += f"\n\n### Volatility Analysis (20-day annualized)\nHighest volatility:\n{top_vol_20d.to_string()}\n\nLowest volatility:\n{bottom_vol_20d.to_string()}"
-            
-            if vol_60d is not None:
-                top_vol_60d = vol_60d.nlargest(5)
-                bottom_vol_60d = vol_60d.nsmallest(5)
-                prompt += f"\n\n### Volatility Analysis (60-day annualized)\nHighest volatility:\n{top_vol_60d.to_string()}\n\nLowest volatility:\n{bottom_vol_60d.to_string()}"
+        # Add volatility analysis
+        vol_20d = volatility_dict['volatility_20d']
+        vol_60d = volatility_dict['volatility_60d']
         
-        # Add correlation analysis if provided
-        if correlation_matrix is not None:
-            # Show strong correlations (> 0.7 or < -0.7)
-            strong_corr = []
-            for i in range(len(correlation_matrix.columns)):
-                for j in range(i+1, len(correlation_matrix.columns)):
-                    corr_val = correlation_matrix.iloc[i, j]
-                    if abs(corr_val) > 0.7:
-                        strong_corr.append((correlation_matrix.columns[i], correlation_matrix.columns[j], corr_val))
-            
-            if strong_corr:
-                strong_corr.sort(key=lambda x: abs(x[2]), reverse=True)
-                corr_text = "\n".join([f"{x[0]} <-> {x[1]}: {x[2]:.3f}" for x in strong_corr[:10]])
-                prompt += f"\n\n### Strong Correlations (|corr| > 0.7)\n{corr_text}"
+        # Get top and bottom volatility stocks
+        top_vol_20d = vol_20d.nlargest(5)
+        bottom_vol_20d = vol_20d.nsmallest(5)
+        prompt += f"\n\n### Volatility Analysis (20-day annualized)\nHighest volatility:\n{top_vol_20d.to_string()}\n\nLowest volatility:\n{bottom_vol_20d.to_string()}"
         
-        # Add covariance analysis if provided
-        if covariance_matrix is not None:
-            # Calculate mean covariance of each stock with others (portfolio covariance measure)
-            mean_cov = covariance_matrix.mean(axis=0).sort_values(ascending=False)
-            high_cov = mean_cov.head(5)
-            low_cov = mean_cov.tail(5)
-            prompt += f"\n\n### Covariance Analysis (annualized)\nHighest average covariance with portfolio:\n{high_cov.to_string()}\n\nLowest average covariance with portfolio:\n{low_cov.to_string()}"
+        top_vol_60d = vol_60d.nlargest(5)
+        bottom_vol_60d = vol_60d.nsmallest(5)
+        prompt += f"\n\n### Volatility Analysis (60-day annualized)\nHighest volatility:\n{top_vol_60d.to_string()}\n\nLowest volatility:\n{bottom_vol_60d.to_string()}"
+        
+        # Add correlation analysis
+        # Show strong correlations (> 0.7 or < -0.7)
+        strong_corr = []
+        for i in range(len(correlation_matrix.columns)):
+            for j in range(i+1, len(correlation_matrix.columns)):
+                corr_val = correlation_matrix.iloc[i, j]
+                if abs(corr_val) > 0.7:
+                    strong_corr.append((correlation_matrix.columns[i], correlation_matrix.columns[j], corr_val))
+        
+        if strong_corr:
+            strong_corr.sort(key=lambda x: abs(x[2]), reverse=True)
+            corr_text = "\n".join([f"{x[0]} <-> {x[1]}: {x[2]:.3f}" for x in strong_corr[:10]])
+            prompt += f"\n\n### Strong Correlations (|corr| > 0.7)\n{corr_text}"
+        else:
+            prompt += "\n\n### Strong Correlations\nNo correlations > 0.7 found"
+        
+        # Add covariance analysis
+        # Calculate mean covariance of each stock with others (portfolio covariance measure)
+        mean_cov = covariance_matrix.mean(axis=0).sort_values(ascending=False)
+        high_cov = mean_cov.head(5)
+        low_cov = mean_cov.tail(5)
+        prompt += f"\n\n### Covariance Analysis (annualized)\nHighest average covariance with portfolio:\n{high_cov.to_string()}\n\nLowest average covariance with portfolio:\n{low_cov.to_string()}"
         
         return self.act(prompt)
     
@@ -162,7 +159,7 @@ class TraderAgent(BaseAgent):
         best_weights = None
         last_total = None
         
-        for attempt in range(max_retries + 1):  # 0, 1, 2, 3 = 4 total attempts
+        for attempt in range(max_retries + 1):
             # Build prompt with feedback if retry
             if attempt == 0:
                 prompt = base_prompt
@@ -200,29 +197,26 @@ class TraderAgent(BaseAgent):
                     return pd.concat([portfolio, new_df_row])
                 # Otherwise continue loop to retry
                 
-            except:
-                # Parse error, continue to next attempt
+            except Exception as e:
+                if DEBUG_AGENT_REASONING:
+                    print(f"[DEBUG] Parse attempt {attempt} failed: {type(e).__name__}: {str(e)}")
                 continue
         
-        # All retries exhausted, use best attempt or fallback
-        if best_weights is None:
-            # No valid parse, use previous allocation
-            new_row = portfolio.iloc[-1].to_dict()
-        else:
+        # All retries exhausted - use best attempt or raise
+        if best_weights is not None:
             # Use best attempt even though it's out of bounds
+            print(f"WARNING: TraderAgent failed after {max_retries + 1} attempts. Using best attempt with total={last_total:.4f}")
             new_row = best_weights
+        else:
+            # No valid parse at all
+            raise RuntimeError(f"TraderAgent failed to produce valid JSON allocation after {max_retries + 1} attempts")
         
-        # If weights sum to zero, fall back to previous allocation
+        # Normalize and return
         total = sum(new_row.values())
         if total <= 0:
-            new_row = portfolio.iloc[-1].to_dict()
-            total = sum(new_row.values())
+            raise RuntimeError(f"Allocation weights sum to {total}, cannot normalize")
         
-        # Normalize weights to 1.0 and round to 2 decimals
-        if total > 0:
-            new_row = {k: round(v / total, 2) for k, v in new_row.items()}
-        
-        # Append new row with latest_date index
+        new_row = {k: round(v / total, 2) for k, v in new_row.items()}
         new_df_row = pd.DataFrame([new_row], index=[latest_date])
         return pd.concat([portfolio, new_df_row])
 
