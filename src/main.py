@@ -1,4 +1,6 @@
 import pandas as pd
+import sys
+from kervielbot import agents
 from kervielbot.agents import DataAgent, AnalysisAgent, TraderAgent, client
 from kervielbot.stocks import STOCK_NAMES
 from kervielbot.prompts import ANALYST_PROMPT, TRADER_PROMPT
@@ -6,10 +8,14 @@ from kervielbot.preprocessing import get_trading_dates, update_capital
 from kervielbot.visuals import generate_benchmark_plot
 from kervielbot.stats import calculate_returns, calculate_return_correlations, calculate_rolling_volatility
 
-HISTORICAL_DATA_START = "2025-08-31"
+HISTORICAL_DATA_START = "2025-01-01"
 TEST_DATE_START = "2025-09-01"
 TEST_DATE_END = "2025-10-01"
 STARTING_CAPITAL = 1_000_000.0
+
+# Enable agent reasoning debug output if passed as command line arg
+if len(sys.argv) > 1 and sys.argv[1].lower() == 'debug':
+    agents.DEBUG_AGENT_REASONING = True
 
 
 
@@ -72,15 +78,20 @@ def main():
         
         # Trader agent allocates for forecast day
         portfolio_weights = trader_agent.allocation(portfolio_weights, forecast_date, analysis, list_of_stocks)
-        
+
         # Update end-of-day capital based on new portfolio weights
         capital = update_capital(portfolio_weights, data_df, capital, forecast_date)
         
-        print(f"Portfolio allocation for {forecast_date.date()}: {portfolio_weights.iloc[-1].to_dict()}")
-        print(f"Portfolio net value for {forecast_date.date()}: {capital.iloc[-1]}")
+        # Print only non-zero allocations for this date
+        current_alloc = portfolio_weights.iloc[-1]
+        non_zero_alloc = current_alloc[current_alloc > 0.001]
+        print(f"Portfolio allocation for {forecast_date.date()}: {non_zero_alloc.to_dict()}")
+        print(f"Portfolio net value for {forecast_date.date()}: ${capital.iloc[-1]:,.2f}")
     
     print(f"\n--- Final Portfolio ---")
-    print(portfolio_weights)
+    # Only show columns with at least one non-zero value
+    portfolio_with_holdings = portfolio_weights.loc[:, (portfolio_weights != 0).any()]
+    print(portfolio_with_holdings)
     
     # Calculate performance metrics
     final_capital = capital.iloc[-1]
