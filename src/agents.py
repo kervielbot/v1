@@ -8,7 +8,7 @@ from pathlib import Path
 
 MODEL_ID = 'gemini-3.1-flash-lite-preview'
 
-PROJECT_ID = 'rogue-trader-thursday'
+PROJECT_ID = 'rogue-trader-friday'
 
 LOCATION = 'global'
 
