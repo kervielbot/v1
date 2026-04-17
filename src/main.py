@@ -6,7 +6,7 @@ from kervielbot.stocks import STOCK_NAMES
 from kervielbot.prompts import ANALYST_PROMPT, TRADER_PROMPT
 from kervielbot.preprocessing import get_trading_dates, update_capital
 from kervielbot.visuals import generate_benchmark_plot
-from kervielbot.stats import calculate_returns, calculate_return_correlations, calculate_rolling_volatility
+from kervielbot.stats import calculate_returns, calculate_return_correlations, calculate_rolling_volatility, calculate_return_covariance
 
 HISTORICAL_DATA_START = "2025-01-01"
 TEST_DATE_START = "2025-09-01"
@@ -72,9 +72,10 @@ def main():
         # Compute volatilities and correlation matrix from historical returns
         volatility_dict = calculate_rolling_volatility(historical_returns)
         correlation_matrix = calculate_return_correlations(historical_returns)
+        covariance_matrix = calculate_return_covariance(historical_returns)
         
-        # Analysis agent analyzes historical data
-        analysis = analysis_agent.analyze(historical_data)
+        # Analysis agent analyzes historical data with volatility and correlation insights
+        analysis = analysis_agent.analyze(historical_data, volatility_dict, correlation_matrix, covariance_matrix)
         
         # Trader agent allocates for forecast day
         portfolio_weights = trader_agent.allocation(portfolio_weights, forecast_date, analysis, list_of_stocks)
