@@ -36,7 +36,7 @@ except ImportError:
 
 
 MODEL_ID = 'gemini-3.1-flash-lite-preview'
-PROJECT_ID = 'rogue-trader-wednesday'
+PROJECT_ID = 'rogue-trader-friday'
 LOCATION = 'global'
 
 
