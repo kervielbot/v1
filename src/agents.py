@@ -12,6 +12,9 @@ PROJECT_ID = 'rogue-trader-friday'
 
 LOCATION = 'global'
 
+# Debug flag for agent reasoning output
+DEBUG_AGENT_REASONING = False
+
 client = Client(vertexai=True, project=PROJECT_ID, location=LOCATION)
 
 # Define a base agent class that uses the OpenAI API if an API key is set; otherwise, it returns a simulated response.
@@ -106,7 +109,9 @@ class TraderAgent(BaseAgent):
         Based on this analysis, suggest the ideal weights for the portfolio comprised of the following assets:
         free cash and the following stocks {list_of_stocks}.
         
-        Return ONLY a valid JSON object in this exact format (no other text):
+        IMPORTANT: Concentrate the portfolio in high-conviction positions. Allocate meaningful weights (>2%) to your top 5-10 conviction ideas, not equal weights across all 73 stocks. Use 0% for stocks you don't have strong conviction on.
+        
+        First, provide your reasoning for the allocation in 2-3 sentences. Then return a valid JSON object in this exact format:
         {{"Cash": 0.2, "AAPL": 0.3, "GOOGL": 0.5}}
         
         Use ticker names for stocks and 'Cash' for free cash. Weights must be floats between 0 and 1 and sum to 1.0."""
@@ -125,11 +130,14 @@ class TraderAgent(BaseAgent):
             try:
                 response = client.models.generate_content(model=MODEL_ID, contents=prompt)
                 
+                if DEBUG_AGENT_REASONING:
+                    print(f"\n[DEBUG] Trader Agent Raw Response:\n{response.text}\n")
+                
                 # Parse JSON
                 start_idx = response.text.find('{')
                 end_idx = response.text.rfind('}') + 1
                 weights_dict = json.loads(response.text[start_idx:end_idx])
-                weights = {col: weights_dict.get(col, 0.0) for col in portfolio.columns}
+                weights = {col: round(weights_dict.get(col, 0.0), 2) for col in portfolio.columns}
                 
                 # Calculate total
                 total = sum(weights.values())
@@ -141,8 +149,8 @@ class TraderAgent(BaseAgent):
                 
                 # Check if within bounds (0.95 to 1.05)
                 if 0.95 <= total <= 1.05:
-                    # Within bounds, normalize and return immediately
-                    new_row = {k: v / total for k, v in weights.items()}
+                    # Within bounds, normalize and round to 2 decimals
+                    new_row = {k: round(v / total, 2) for k, v in weights.items()}
                     new_df_row = pd.DataFrame([new_row], index=[latest_date])
                     return pd.concat([portfolio, new_df_row])
                 # Otherwise continue loop to retry
@@ -165,9 +173,9 @@ class TraderAgent(BaseAgent):
             new_row = portfolio.iloc[-1].to_dict()
             total = sum(new_row.values())
         
-        # Normalize weights to 1.0
+        # Normalize weights to 1.0 and round to 2 decimals
         if total > 0:
-            new_row = {k: v / total for k, v in new_row.items()}
+            new_row = {k: round(v / total, 2) for k, v in new_row.items()}
         
         # Append new row with latest_date index
         new_df_row = pd.DataFrame([new_row], index=[latest_date])
