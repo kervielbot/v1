@@ -1,6 +1,3 @@
-.terraform
-.terraform.lock.hcl
-one-day-sandbox-gcloud.json
 __pycache__
 portfolio_allocation.csv
 kervielbot.egg-info
